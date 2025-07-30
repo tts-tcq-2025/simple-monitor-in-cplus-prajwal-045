@@ -3,72 +3,74 @@
 #include <cassert>
 using namespace std;
 
-// Struct for range definition
+// Struct for defining parameter range
 struct Range {
   float min;
   float max;
   string name;
 };
 
-// Struct for breach result
+// Struct for result status and message
 struct BreachInfo {
   bool isOk;
   string message;
 };
 
-// Generic range checker (for bounded parameters)
-BreachInfo checkRange(float value, const Range& range, bool hasMin = true) {
-  if (hasMin && value < range.min) {
-    return {false, range.name + " is too low!"};
-  }
-  if (value > range.max) {
-    return {false, range.name + " is too high!"};
+// Reusable function to check only maximum limit
+BreachInfo checkMaxOnly(float value, float max, const string& name) {
+  if (value > max) {
+    return {false, name + " is too high!"};
   }
   return {true, ""};
 }
 
+// Reusable function to check range (min optional), uses checkMaxOnly
+BreachInfo checkRange(float value, const Range& range, bool hasMin = true) {
+  if (hasMin && value < range.min) {
+    return {false, range.name + " is too low!"};
+  }
+  return checkMaxOnly(value, range.max, range.name);  // max check via helper
+}
+
+// Centralized reporter for out-of-range messages
+void reportIfNotOk(const BreachInfo& info) {
+  if (!info.isOk) {
+    cout << info.message << endl;
+  }
+}
+
 // Main battery check function
 bool batteryIsOk(float temperature, float soc, float chargeRate) {
-  Range temperatureRange = {0, 45, "Temperature"};
+  Range tempRange = {0, 45, "Temperature"};
   Range socRange = {20, 80, "State of Charge"};
-  Range chargeRateRange = {0, 0.8, "Charge Rate"}; // Min 0 used for clarity, not enforced
+  Range chargeRateRange = {0, 0.8, "Charge Rate"};
 
-  BreachInfo tempCheck = checkRange(temperature, temperatureRange);
+  BreachInfo tempCheck = checkRange(temperature, tempRange);
   BreachInfo socCheck = checkRange(soc, socRange);
-  BreachInfo crCheck = checkRange(chargeRate, chargeRateRange, false); // no min check
+  BreachInfo chargeCheck = checkRange(chargeRate, chargeRateRange, false); // skip min check
 
-  if (!tempCheck.isOk) {
-    cout << tempCheck.message << endl;
-    return false;
-  }
-  if (!socCheck.isOk) {
-    cout << socCheck.message << endl;
-    return false;
-  }
-  if (!crCheck.isOk) {
-    cout << crCheck.message << endl;
-    return false;
-  }
-  return true;
+  reportIfNotOk(tempCheck);
+  reportIfNotOk(socCheck);
+  reportIfNotOk(chargeCheck);
+
+  return tempCheck.isOk && socCheck.isOk && chargeCheck.isOk;
 }
 
 // Unit test cases
 void runTests() {
-  // Valid case
-  assert(batteryIsOk(25, 70, 0.7) == true);
+  // Valid test cases
+  assert(batteryIsOk(25, 70, 0.7) == true); // Normal
+  assert(batteryIsOk(0, 20, 0.0) == true);  // Lower bounds
+  assert(batteryIsOk(45, 80, 0.8) == true); // Upper bounds
 
-  // Boundary values
-  assert(batteryIsOk(0, 20, 0.0) == true);
-  assert(batteryIsOk(45, 80, 0.8) == true);
-
-  // Failures
+  // Failures (one parameter each)
   assert(batteryIsOk(-1, 70, 0.7) == false);  // Temperature too low
   assert(batteryIsOk(46, 70, 0.7) == false);  // Temperature too high
   assert(batteryIsOk(25, 19, 0.7) == false);  // SOC too low
   assert(batteryIsOk(25, 81, 0.7) == false);  // SOC too high
-  assert(batteryIsOk(25, 70, 0.81) == false); // Charge Rate too high
+  assert(batteryIsOk(25, 70, 0.81) == false); // Charge rate too high
 
-  // Multiple errors
+  // Multiple issues
   assert(batteryIsOk(50, 85, 0.9) == false);
 
   cout << "All tests passed.\n";
